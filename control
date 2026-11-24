@@ -1,0 +1,9 @@
+Package: com.swin.cftrigger
+Name: CFTrigger
+Version: 1.0
+Architecture: iphoneos-arm64
+Description: Pixel Triggerbot for CounterFlame
+Maintainer: swin
+Author: swin
+Section: Tweaks
+Depends: mobilesubstrate
