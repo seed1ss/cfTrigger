@@ -12,7 +12,9 @@ jobs:
       - name: Install Deps
         run: brew install ldid xz
       - name: Build
-        run: make package FINALPACKAGE=1
+        run: |
+          export THEOS=$HOME/theos
+          make package FINALPACKAGE=1
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
