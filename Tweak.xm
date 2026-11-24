@@ -1,0 +1,79 @@
+// ObjC++, iOS ARM64, CounterFlame Pixel Triggerbot
+#import <UIKit/UIKit.h>
+#import <objc/runtime.h>
+#import <mach/mach.h>
+#import <QuartzCore/QuartzCore.h>
+
+static BOOL g_enabled = YES;
+static float g_delay = 0.050;
+static BOOL g_shouldFire = NO;
+static CGFloat g_fireXPercent = 0.85;
+static CGFloat g_fireYPercent = 0.85;
+
+bool checkCenterPixel(UIImage *img) {
+    if (!img) return false;
+    CGImageRef cg = img.CGImage;
+    if (!cg) return false;
+    size_t w = CGImageGetWidth(cg);
+    size_t h = CGImageGetHeight(cg);
+    size_t cx = w / 2;
+    size_t cy = h / 2;
+    CGRect rect = CGRectMake(cx - 5, cy - 5, 10, 10);
+    CGImageRef crop = CGImageCreateWithImageInRect(cg, rect);
+    if (!crop) return false;
+    CFDataRef data = CGDataProviderCopyData(CGImageGetDataProvider(crop));
+    const UInt8 *buf = CFDataGetBytePtr(data);
+    bool found = false;
+    for (int i = 0; i < 10 * 10 * 4; i += 4) {
+        UInt8 r = buf[i];
+        UInt8 g = buf[i+1];
+        UInt8 b = buf[i+2];
+        if (r > 180 && g < 100 && b < 100) { found = true; break; }
+    }
+    CFRelease(data);
+    CGImageRelease(crop);
+    return found;
+}
+
+void simulateFireTouch() {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIWindow *window = [UIApplication sharedApplication].keyWindow;
+        if (!window) return;
+        CGPoint p = CGPointMake(window.bounds.size.width * g_fireXPercent, window.bounds.size.height * g_fireYPercent);
+        UITouch *touch = [[UITouch alloc] init];
+        [touch setValue:@(UITouchPhaseBegan) forKey:@"phase"];
+        [touch setValue:window forKey:@"window"];
+        [touch setValue:@(p.x) forKey:@"locationInWindowX"];
+        [touch setValue:@(p.y) forKey:@"locationInWindowY"];
+        UIEvent *event = [[UIEvent alloc] init];
+        [event setValue:[NSSet setWithObject:touch] forKey:@"allTouches"];
+        [[UIApplication sharedApplication] sendEvent:event];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.02 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [touch setValue:@(UITouchPhaseEnded) forKey:@"phase"];
+            [[UIApplication sharedApplication] sendEvent:event];
+        });
+    });
+}
+
+static void triggerLoop() {
+    while (true) {
+        if (!g_enabled) { usleep(100000); continue; }
+        UIGraphicsBeginImageContextWithOptions([UIScreen mainScreen].bounds.size, NO, 1.0);
+        [[UIApplication sharedApplication].keyWindow drawViewHierarchyInRect:[UIScreen mainScreen].bounds afterScreenUpdates:NO];
+        UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+        if (checkCenterPixel(img)) {
+            if (!g_shouldFire) {
+                g_shouldFire = YES;
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(g_delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    if (g_shouldFire) simulateFireTouch();
+                });
+            }
+        } else { g_shouldFire = NO; }
+        usleep(10000);
+    }
+}
+
+%ctor {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{ triggerLoop(); });
+}
