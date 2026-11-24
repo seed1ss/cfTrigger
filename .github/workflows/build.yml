@@ -1,22 +1,83 @@
-name: Build Tweak
-on: [push, workflow_dispatch]
-jobs:
-  build:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Theos
-        run: |
-          git clone --recursive https://github.com/theos/theos.git $HOME/theos
-          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
-      - name: Install Deps
-        run: brew install ldid xz
-      - name: Build
-        run: |
-          export THEOS=$HOME/theos
-          make package FINALPACKAGE=1
-      - name: Upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: CFTrigger-deb
-          path: packages/*.deb
+#import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
+#import <objc/runtime.h>
+#import <QuartzCore/QuartzCore.h>
+
+static BOOL g_espEnabled = YES;
+
+@interface ESPView : UIView
+@property (nonatomic, strong) CADisplayLink *displayLink;
+@end
+
+@implementation ESPView
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.backgroundColor = [UIColor clearColor];
+        self.userInteractionEnabled = NO;
+        self.displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(update)];
+        [self.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+    }
+    return self;
+}
+- (void)update {
+    [self setNeedsDisplay];
+}
+- (void)drawRect:(CGRect)rect {
+    if (!g_espEnabled) return;
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (!ctx) return;
+    CGContextClearRect(ctx, rect);
+
+    // Делаем скриншот экрана
+    UIGraphicsBeginImageContextWithOptions(self.bounds.size, NO, 1.0);
+    [[UIApplication sharedApplication].keyWindow drawViewHierarchyInRect:self.bounds afterScreenUpdates:NO];
+    UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
+    if (!img) return;
+    CGImageRef cg = img.CGImage;
+    if (!cg) return;
+    
+    size_t w = CGImageGetWidth(cg), h = CGImageGetHeight(cg);
+    
+    // Сканируем экран на красные пиксели
+    for (size_t y = 0; y < h; y += 20) {
+        for (size_t x = 0; x < w; x += 20) {
+            CGRect cRect = CGRectMake(x, y, 20, 20);
+            CGImageRef crop = CGImageCreateWithImageInRect(cg, cRect);
+            if (!crop) continue;
+            
+            CFDataRef data = CGDataProviderCopyData(CGImageGetDataProvider(crop));
+            if (data) {
+                const UInt8 *buf = CFDataGetBytePtr(data);
+                BOOL found = NO;
+                for (int i = 0; i < 20 * 20 * 4; i += 4) {
+                    if (buf[i] > 180 && buf[i+1] < 100 && buf[i+2] < 100) { found = YES; break; }
+                }
+                CFRelease(data);
+                
+                if (found) {
+                    CGContextSetStrokeColorWithColor(ctx, [UIColor redColor].CGColor);
+                    CGContextSetLineWidth(ctx, 2.0);
+                    CGContextStrokeRect(ctx, cRect);
+                }
+            }
+            CGImageRelease(crop);
+        }
+    }
+}
+@end
+
+%ctor {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIWindow *window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        window.windowLevel = UIWindowLevelAlert + 1;
+        window.backgroundColor = [UIColor clearColor];
+        window.rootViewController = [UIViewController new];
+        
+        ESPView *esp = [[ESPView alloc] initWithFrame:window.bounds];
+        [window.rootViewController.view addSubview:esp];
+        [window makeKeyAndVisible];
+    });
+}
