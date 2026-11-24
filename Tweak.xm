@@ -1,9 +1,12 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
-#import <QuartzCore/QuartzCore.h>
+
+// Координаты кнопки стрельбы (лево-верх)
+static CGFloat g_fireXPercent = 0.15;
+static CGFloat g_fireYPercent = 0.15;
 
 @interface ESPView : UIView
-@property (nonatomic, strong) CADisplayLink *link;
+@property (nonatomic, strong) NSTimer *timer;
 @end
 
 @implementation ESPView
@@ -12,8 +15,7 @@
     if (self) {
         self.backgroundColor = [UIColor clearColor];
         self.userInteractionEnabled = NO;
-        self.link = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick)];
-        [self.link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+        self.timer = [NSTimer scheduledTimerWithTimeInterval:0.05 target:self selector:@selector(tick) userInfo:nil repeats:YES];
     }
     return self;
 }
@@ -22,9 +24,10 @@
 }
 - (void)drawRect:(CGRect)rect {
     CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (!ctx) return;
     CGContextClearRect(ctx, rect);
     
-    // Рисуем простой тестовый квадрат в центре
+    // Рисуем тестовый красный квадрат по центру экрана
     CGContextSetStrokeColorWithColor(ctx, [UIColor redColor].CGColor);
     CGContextSetLineWidth(ctx, 2.0);
     CGContextStrokeRect(ctx, CGRectMake(rect.size.width/2 - 50, rect.size.height/2 - 50, 100, 100));
